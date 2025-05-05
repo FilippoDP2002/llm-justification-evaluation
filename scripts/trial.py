@@ -10,7 +10,7 @@ def query_ollama(model_name: str, prompt: str) -> str:
             ["ollama", "run", model_name],
             input=prompt.encode('utf-8'),
             capture_output=True,
-            timeout=30
+            #timeout=60
         )
         return result.stdout.decode('utf-8').strip()
     except Exception as e:
