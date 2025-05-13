@@ -33,7 +33,7 @@ Output Format Requirements:
         Enclose display-style or block equations within double dollar signs (
         ...
 
-        ) if needed for clarity, although inline ($ ... $) is often sufficient as shown in the example.
+        ) if needed for clarity, although inline ($ ... $) is preferred as shown in the example.
 
         Ensure your LaTeX usage is consistent and follows standard mathematical conventions, similar to the provided example problem and solution.
 
@@ -49,4 +49,5 @@ Your expected output:
 ## Reasoning
 Let $v$ be the speed... [Detailed step-by-step derivation using LaTeX for all math notation] ... therefore, the final speed is $10 \mathrm{~km} / \mathrm{h}$.
 
-Strict Adherence: Do not deviate from this structure or formatting. Ensure the ## Answer section contains nothing but the final result.
+Strict Adherence: Do not deviate from this structure or formatting. 
+DOUBLE CHECK FOR THE PRESENCE OF "## Answer" and "## Reasoning" headers, this is IMPERATIVE.

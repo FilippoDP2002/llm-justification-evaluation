@@ -1,98 +1,159 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-"""
-A simple script to ask a question to a local LLM using Ollama.
-
-Takes the model name and the question as command-line arguments.
-Requires the 'ollama' Python library and a running Ollama instance.
-
-Usage:
-  python ask_ollama.py --model <model_name> --question "Your question here"
-
-Example:
-  python ask_ollama.py --model phi3 --question "What is the capital of France?"
-"""
-
-import argparse
+import subprocess
 import sys
-import ollama
+import argparse
+import sqlite3
+import os
+import time # Added for timing
+import csv # Added for CSV writing
 
-# --- Configuration ---
-# Define the system prompt to guide the LLM's behavior
-SYSTEM_PROMPT = "You are a helpful and concise AI assistant. Answer the user's question directly."
-# --- End Configuration ---
-
-def ask_llm(model_name: str, question: str, system_prompt: str):
+def query_ollama(model_name: str, prompt: str):
     """
-    Sends a question to the specified Ollama model and returns the answer.
+    Queries the Ollama model with the given prompt.
 
     Args:
-        model_name: The name of the Ollama model to use (e.g., 'llama3', 'mistral').
-        question: The user's question string.
-        system_prompt: The system prompt string to guide the model.
+        model_name: The name of the Ollama model to use.
+        prompt: The prompt to send to the model.
 
     Returns:
-        The content of the LLM's response string, or None if an error occurs.
+        The model's response as a string, or an error message.
     """
-    messages = [
-        {'role': 'system', 'content': system_prompt},
-        {'role': 'user', 'content': question},
-    ]
-
     try:
-        print(f"--- Sending request to model: {model_name} ---")
-        # Use stream=False for a single complete response
-        response = ollama.chat(model=model_name, messages=messages, stream=False)
-        # print(f"Raw response: {response}") # Uncomment for debugging
-        return response['message']['content']
-    except ollama.ResponseError as e:
-        print(f"\nError communicating with Ollama model '{model_name}':")
-        print(f"  Status Code: {e.status_code}")
-        print(f"  Error: {e.error}")
-        if "model not found" in e.error:
-            print(f"  Suggestion: Make sure you have pulled the model using 'ollama pull {model_name}'")
-        elif "connection refused" in e.error.lower():
-             print(f"  Suggestion: Make sure the Ollama application or server is running.")
-        return None
+        # Record start time
+        start_time = time.time()
+        
+        result = subprocess.run(
+            ["ollama", "run", model_name],
+            input=prompt.encode('utf-8'),
+            capture_output=True,
+            # timeout=60 # Consider re-enabling or adjusting timeout if needed
+        )
+        
+        # Record end time
+        end_time = time.time()
+        
+        response_text = result.stdout.decode('utf-8').strip()
+        
+        # Calculate time taken in seconds
+        time_taken = end_time - start_time
+        
+        # Return both response and time_taken
+        return response_text, time_taken
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}")
-        return None
+        return f"Error: {e}", 0 # Return 0 for time_taken in case of error
 
 def main():
     """
-    Parses command-line arguments and orchestrates the LLM query.
+    Main function to process math questions, query Ollama, and save results.
     """
     parser = argparse.ArgumentParser(
-        description="Ask a question to a local LLM via Ollama.",
+        description="Ask math questions to a local LLM via Ollama.",
         formatter_class=argparse.RawTextHelpFormatter # To preserve formatting in help text
     )
+
     parser.add_argument(
         "--model",
         required=True,
         help="The name of the Ollama model to use (e.g., 'llama3', 'mistral')."
     )
     parser.add_argument(
-        "--question",
-        required=True,
-        help="The question you want to ask the LLM."
+        "--reset-output",
+        action="store_true",
+        help="If enabled, the output file is cleared before execution."
     )
 
     args = parser.parse_args()
 
-    print(f"Asking Model: '{args.model}'")
-    print(f"Question: '{args.question}'")
-    print("-" * 20)
+    model_name = args.model
+    # Define paths (consider making these configurable or relative to script location)
+    # Assuming the script is run from a directory where '../data/' path is valid.
+    # Adjust these paths if your directory structure is different.
+    script_dir = os.path.dirname(os.path.abspath(__file__)) # Get directory of the script
+    prompt_file_path = os.path.join(script_dir, "../data/prompts/math_question_prompt.txt")
+    db_path = os.path.join(script_dir, "../data/datasets/math_questions.db")
+    output_path = os.path.join(script_dir, "../data/generated_data/math_answers.csv")
+    header = ["id", "question", "response", "model", "time_taken_seconds"]
 
-    answer = ask_llm(args.model, args.question, SYSTEM_PROMPT)
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    if answer:
-        print("\n--- LLM Answer ---")
-        print(answer)
-        print("-" * 20)
-    else:
-        print("\nFailed to get an answer from the LLM.")
-        sys.exit(1) # Exit with error status if no answer
+    try:
+        with open(prompt_file_path, "r", encoding="utf-8") as f:
+            prompt_prefix = f.read().strip()
+    except FileNotFoundError:
+        print(f"Prompt file not found: {prompt_file_path}")
+        sys.exit(1)
+
+    if not os.path.exists(db_path):
+        print(f"Database not found: {db_path}")
+        sys.exit(1)
+
+    # Clear the output file and write the header
+    if(args.reset_output): 
+        try:
+            with open(output_path, "w", newline='', encoding="utf-8") as csvfile:
+                csv_writer = csv.writer(csvfile)
+                # Define header row
+                csv_writer.writerow(header)
+        except IOError as e:
+            print(f"Error initializing output file {output_path}: {e}")
+            sys.exit(1)
+
+    conn = None # Initialize conn to None
+    try:
+        conn = sqlite3.connect(db_path)
+        # Using pandas to read SQL is convenient, but for large datasets,
+        # consider processing row by row directly from cursor.
+        # For now, keeping it similar to original, but limiting to 1 for testing.
+        # Remove 'LIMIT 1' for processing all questions.
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, problem FROM math_questions LIMIT 1") # Removed LIMIT 1
+
+        row = cursor.fetchone() # Fetch the first row
+        while row:
+            question_id, problem_text = row
+
+            full_prompt = f"{prompt_prefix}\n\n{problem_text}"
+            
+            print(f"\nProcessing question ID: {question_id}...")
+            response, time_taken = query_ollama(model_name, full_prompt)
+            
+            if "Error:" in response and time_taken == 0: # Check if query_ollama returned an error
+                print(f"Failed to get response for question ID {question_id}: {response}")
+            else:
+                print(f"Response received in {time_taken:.2f} seconds.")
+                # print(f"Response: {response[:100]}...") # Print a snippet of the response
+
+            # Prepare data for CSV
+            result_data = {
+                "id": question_id,
+                "question": problem_text,
+                "response": response,
+                "model": model_name,
+                "time_taken_seconds": f"{time_taken:.1f}" # Format time_taken
+            }
+
+            # Append the new result to the CSV file
+            try:
+                with open(output_path, "a", newline='', encoding="utf-8") as csvfile:
+                    csv_writer = csv.DictWriter(csvfile, fieldnames=header)
+                    # No need to write header again, DictWriter can use fieldnames
+                    csv_writer.writerow(result_data)
+                print(f"Appended answer for question ID {question_id} to {output_path}")
+            except IOError as e:
+                print(f"Error writing to output file {output_path} for question ID {question_id}: {e}")
+            
+            row = cursor.fetchone() # Fetch the next row
+
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+    print(f"\nProcessing complete. Results saved in {output_path}")
 
 if __name__ == "__main__":
     main()
