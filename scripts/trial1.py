@@ -1,19 +1,14 @@
 import pandas as pd
-import subprocess
+import ollama
 import sys
 from datetime import datetime
 import sqlite3
 import os
 
-def query_ollama(model_name: str, prompt: str) -> str:
+def query_ollama(model_name: str, problem: str, sys_prompt:str) -> str:
     try:
-        result = subprocess.run(
-            ["ollama", "run", model_name],
-            input=prompt.encode('utf-8'),
-            capture_output=True,
-            #timeout=60
-        )
-        return result.stdout.decode('utf-8').strip()
+        result = ollama.generate(model=model_name, prompt=problem, system=sys_prompt)
+        return result['response']
     except Exception as e:
         return f"Error: {e}"
 
@@ -25,7 +20,7 @@ def main():
     model_name = sys.argv[1]
 
     with open("../data/prompts/math_question_prompt.txt", "r", encoding="utf-8") as f:
-        prompt_prefix = f.read().strip()
+        sys_prompt = f.read().strip()
 
     db_path = "../data/datasets/math_questions.db"
     if not os.path.exists(db_path):
@@ -38,8 +33,8 @@ def main():
 
     results = []
     for _, row in df.iterrows():
-        full_prompt = f"{prompt_prefix}\n\n{row['problem']}"
-        response = query_ollama(model_name, full_prompt)
+        question_id, problem_text = row
+        response = query_ollama(model_name, problem_text, sys_prompt)
         print('response')
         print(response)
         timestamp = datetime.now().isoformat()
