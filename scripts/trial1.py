@@ -2,6 +2,7 @@ import pandas as pd
 import subprocess
 import sys
 from datetime import datetime
+import sqlite3
 import os
 
 def query_ollama(model_name: str, prompt: str) -> str:
@@ -23,28 +24,36 @@ def main():
 
     model_name = sys.argv[1]
 
-    input_file = "data/trial.csv"
-    output_file = f"results/trial_{model_name.replace(':','_')}.csv"
+    with open("prompts/math_question_prompt.txt", "r", encoding="utf-8") as f:
+        prompt_prefix = f.read().strip()
 
-    if not os.path.exists(input_file):
-        print(f"Input file not found: {input_file}")
+    db_path = "data/math_questions_trial.db"
+    if not os.path.exists(db_path):
+        print(f"Database not found: {db_path}")
         sys.exit(1)
 
-    df = pd.read_csv(input_file)
+    conn = sqlite3.connect(db_path)
+    df = pd.read_sql_query("SELECT id, problem FROM math_questions LIMIT 5", conn)
+    conn.close()
 
     results = []
-    for question in df['question']:
-        response = query_ollama(model_name, question)
+    for _, row in df.iterrows():
+        full_prompt = f"{prompt_prefix}\n\n{row['problem']}"
+        response = query_ollama(model_name, full_prompt)
+        print('response')
+        print(response)
         timestamp = datetime.now().isoformat()
         results.append({
-            "question": question,
+            "id": row['id'],
+            "question": row['problem'],
             "response": response,
             "model": model_name,
             "timestamp": timestamp
         })
 
-    pd.DataFrame(results).to_csv(output_file, index=False)
+    os.makedirs("results", exist_ok=True)
+    output_path = f"results/trial_{model_name.replace(':','_')}.csv"
+    pd.DataFrame(results).to_csv(output_path, index=False)
 
 if __name__ == "__main__":
     main()
-#test
