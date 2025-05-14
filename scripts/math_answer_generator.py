@@ -1,46 +1,58 @@
 import sys
 import ollama
 import argparse
-import sqlite3
 import os
-import time # Added for timing
-import csv # Added for CSV writing
+import time # For timing API calls
+import csv # For CSV file operations
 
-def query_ollama(model_name: str, problem: str, sys_prompt:str):
+def query_ollama(model_name: str, problem_text: str, sys_prompt:str):
     """
-    Queries the Ollama model with the given prompt.
+    Queries the Ollama model with the given problem text and system prompt.
 
     Args:
-        model_name: The name of the Ollama model to use.
-        prompt: The prompt to send to the model.
+        model_name: The name of the Ollama model to use (e.g., 'llama3', 'mistral').
+        problem_text: The math problem to send to the model.
+        sys_prompt: The system prompt to guide the model's behavior.
 
     Returns:
-        The model's response as a string, or an error message.
+        A tuple containing the model's response (str) and the time taken (float).
+        Returns (error_message, 0) if an error occurs.
     """
     try:
-        # Record start time
         start_time = time.time()
-        
-        response_text = ollama.generate(model=model_name, prompt=problem, system=sys_prompt)['response']
-        # Record end time
+        response_data = ollama.generate(
+            model=model_name,
+            prompt=problem_text,
+            system=sys_prompt
+        )
+        response_text = response_data['response']
         end_time = time.time()
-        
-        
-        # Calculate time taken in seconds
         time_taken = end_time - start_time
-        
-        # Return both response and time_taken
         return response_text, time_taken
     except Exception as e:
-        return f"Error: {e}", 0 # Return 0 for time_taken in case of error
+        print(f"Error querying Ollama: {e}")
+        return f"Error: {e}", 0
 
 def main():
     """
-    Main function to process math questions, query Ollama, and save results.
+    Main function to read math questions from a CSV, query Ollama, and save results.
+    The script assumes it is located in a 'scripts' directory, and the 'data' directory
+    is a sibling to 'scripts' at the project root.
+    Project structure example:
+    .
+    ├── data
+    │   ├── datasets
+    │   │   └── math_questions_pool.csv
+    │   ├── generated_data
+    │   │   └── math_answers.csv
+    │   └── prompts
+    │       └── math_question_prompt.txt
+    └── scripts
+        └── math_answer_generator.py
     """
     parser = argparse.ArgumentParser(
-        description="Ask math questions to a local LLM via Ollama.",
-        formatter_class=argparse.RawTextHelpFormatter # To preserve formatting in help text
+        description="Ask math questions from a CSV to a local LLM via Ollama and save results.",
+        formatter_class=argparse.RawTextHelpFormatter
     )
 
     parser.add_argument(
@@ -51,115 +63,145 @@ def main():
 
     parser.add_argument(
         "--range",
-        help="range of ids to cover, formatted as \"begin:end\""
+        help="0-indexed range of rows to process from the input CSV, formatted as \"begin:end\" (e.g., \"0:99\"). Processes all rows if not specified."
     )
 
     parser.add_argument(
         "--reset-output",
         action="store_true",
-        help="If enabled, the output file is cleared before execution."
+        help="If enabled, the output file is cleared and rewritten. Otherwise, results are appended."
     )
 
     args = parser.parse_args()
-    range_start, range_end = (int(x) for x in args.range.split(':'))
-
     model_name = args.model
-    # Define paths (consider making these configurable or relative to script location)
-    # Assuming the script is run from a directory where '../data/' path is valid.
-    # Adjust these paths if your directory structure is different.
-    script_dir = os.path.dirname(os.path.abspath(__file__)) # Get directory of the script
-    prompt_file_path = os.path.join(script_dir, "../data/prompts/math_question_prompt.txt")
-    db_path = os.path.join(script_dir, "../data/datasets/math_questions.db")
-    output_path = os.path.join(script_dir, "../data/generated_data/math_answers.csv")
-    header = ["id", "question", "response", "model", "time_taken_seconds"]
+
+    # Determine the absolute path of the script's directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Determine the project root directory (assuming script is in 'scripts' subdirectory)
+    project_root = os.path.dirname(script_dir)
+
+    # Define paths relative to the project root
+    prompt_file_path = os.path.join(project_root, "data", "prompts", "math_question_prompt.txt")
+    input_csv_path = os.path.join(project_root, "data", "datasets", "math_questions_pool.csv")
+    output_csv_path = os.path.join(project_root, "data", "generated_data", "math_answers.csv")
+    
+    # Define the header for the output CSV file
+    output_header = ["uuid", "response", "model", "time_taken_seconds"] # Added "time_taken_seconds"
 
     # Ensure the output directory exists
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(output_csv_path), exist_ok=True)
 
+    # Load system prompt
     try:
         with open(prompt_file_path, "r", encoding="utf-8") as f:
             sys_prompt = f.read().strip()
     except FileNotFoundError:
-        print(f"Prompt file not found: {prompt_file_path}")
+        print(f"Error: Prompt file not found at {prompt_file_path}")
+        sys.exit(1)
+    except IOError as e:
+        print(f"Error reading prompt file {prompt_file_path}: {e}")
         sys.exit(1)
 
-    if not os.path.exists(db_path):
-        print(f"Database not found: {db_path}")
+    # Check if input CSV file exists
+    if not os.path.exists(input_csv_path):
+        print(f"Error: Input CSV file not found at {input_csv_path}")
         sys.exit(1)
 
-    # Clear the output file and write the header
-    if(args.reset_output): 
+    # Parse the range argument
+    range_start, range_end = None, None
+    if args.range:
         try:
-            with open(output_path, "w", newline='', encoding="utf-8") as csvfile:
-                csv_writer = csv.writer(csvfile)
-                # Define header row
-                csv_writer.writerow(header)
-        except IOError as e:
-            print(f"Error initializing output file {output_path}: {e}")
+            parts = args.range.split(':')
+            if len(parts) != 2:
+                raise ValueError("Range must have two parts separated by ':'")
+            range_start = int(parts[0])
+            range_end = int(parts[1])
+            if range_start < 0 or range_end < 0 or range_start > range_end:
+                raise ValueError("Invalid range values. Ensure begin <= end and both are non-negative.")
+        except ValueError as e:
+            print(f"Error: Invalid --range argument '{args.range}'. Format: 'begin:end'. {e}")
             sys.exit(1)
-
-    conn = None # Initialize conn to None
+    
+    # Determine file mode for output CSV
+    output_file_mode = 'w' if args.reset_output else 'a'
+    # Check if header needs to be written (if file is new, empty, or being reset)
+    write_header_flag = False
+    if output_file_mode == 'w':
+        write_header_flag = True
+    else: # Append mode
+        if not os.path.exists(output_csv_path) or os.path.getsize(output_csv_path) == 0:
+            write_header_flag = True
+            
     try:
-        conn = sqlite3.connect(db_path)
-        # Using pandas to read SQL is convenient, but for large datasets,
-        # consider processing row by row directly from cursor.
-        # For now, keeping it similar to original, but limiting to 1 for testing.
-        # Remove 'LIMIT 1' for processing all questions.
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, problem FROM math_questions LIMIT 5") # Removed LIMIT 1
+        with open(output_csv_path, output_file_mode, newline='', encoding="utf-8") as outfile:
+            csv_writer = csv.DictWriter(outfile, fieldnames=output_header)
 
-        row = cursor.fetchone() # Fetch the first row
-        while row:
-            question_id, problem_text = row
+            if write_header_flag:
+                csv_writer.writeheader()
 
-            if(question_id < range_start):
-                print('continue')
-                continue
-            elif(question_id > range_end):
-                print('breaking')
-                break
+            # Open and read the input CSV file
+            with open(input_csv_path, "r", newline='', encoding="utf-8") as infile:
+                csv_reader = csv.DictReader(infile)
+                
+                processed_count = 0
+                for i, row in enumerate(csv_reader):
+                    current_row_index = i # 0-indexed
 
-            
-            print(f"\nProcessing question ID: {question_id}...")
-            response, time_taken = query_ollama(model_name, problem_text, sys_prompt)
-            
-            if "Error:" in response and time_taken == 0: # Check if query_ollama returned an error
-                print(f"Failed to get response for question ID {question_id}: {response}")
-            else:
-                print(f"Response received in {time_taken:.2f} seconds.")
-                # print(f"Response: {response[:100]}...") # Print a snippet of the response
+                    # Apply range filter if specified
+                    if range_start is not None and current_row_index < range_start:
+                        continue
+                    if range_end is not None and current_row_index > range_end:
+                        print(f"\nReached end of specified range (row index {range_end}). Stopping.")
+                        break
+                    
+                    try:
+                        question_uuid = row['uuid']
+                        problem_text = row['problem']
+                    except KeyError as e:
+                        print(f"Skipping row {current_row_index + 1} in {input_csv_path} due to missing column: {e}. Expected 'uuid' and 'problem'.")
+                        continue
 
-            # Prepare data for CSV
-            result_data = {
-                "id": question_id,
-                "question": problem_text,
-                "response": response,
-                "model": model_name,
-                "time_taken_seconds": f"{time_taken:.1f}" # Format time_taken
-            }
+                    print(f"\nProcessing Question UUID: {question_uuid} (Row {current_row_index + 1})...")
+                    
+                    response_text, time_taken = query_ollama(model_name, problem_text, sys_prompt)
 
-            # Append the new result to the CSV file
-            try:
-                with open(output_path, "a", newline='', encoding="utf-8") as csvfile:
-                    csv_writer = csv.DictWriter(csvfile, fieldnames=header)
-                    # No need to write header again, DictWriter can use fieldnames
+                    result_data = {
+                        "uuid": question_uuid,
+                        "response": response_text,
+                        "model": model_name,
+                        "time_taken_seconds": f"{time_taken:.1f}" # Added time_taken, formatted to 4 decimal places
+                    }
+
+                    if "Error:" in response_text and time_taken == 0: # Indicates an error from query_ollama
+                        print(f"Failed to get response for UUID {question_uuid}: {response_text}")
+                        # The error message is stored in response_text and will be written
+                    else:
+                        print(f"Response received in {time_taken:.2f} seconds.")
+                        # print(f"Response snippet: {response_text[:100]}...") # Uncomment for quick check
+                    
                     csv_writer.writerow(result_data)
-                    csvfile.close()
-                print(f"Appended answer for question ID {question_id} to {output_path}")
-            except IOError as e:
-                print(f"Error writing to output file {output_path} for question ID {question_id}: {e}")
-            
-            row = cursor.fetchone() # Fetch the next row
+                    processed_count += 1
+                
+                if processed_count == 0:
+                    if range_start is not None or range_end is not None:
+                        print("\nNo questions processed. Check your --range values and CSV content.")
+                    else:
+                        print("\nNo questions found or processed in the input CSV.")
 
-    except sqlite3.Error as e:
-        print(f"Database error: {e}")
+
+    except FileNotFoundError:
+        # This specific check is more for the output_csv_path if something goes wrong during its handling.
+        # Input file existence is checked earlier.
+        print(f"Error: A file operation failed. Please check paths and permissions for {output_csv_path}.")
+        sys.exit(1)
+    except IOError as e:
+        print(f"An I/O error occurred: {e}")
+        sys.exit(1)
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-    finally:
-        if conn:
-            conn.close()
+        sys.exit(1)
 
-    print(f"\nProcessing complete. Results saved in {output_path}")
+    print(f"\nProcessing complete. Results saved to {output_csv_path}")
 
 if __name__ == "__main__":
     main()
