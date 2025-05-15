@@ -20,7 +20,7 @@ Output Format Requirements:
 
         ## Solution Section: This section must contain **only** the correct multiple‑choice letter in uppercase, matching exactly:
 
-            \n## Solution\n[ABCD]
+            STRICT ADHERENCE TOO: \n## Solution\n[ABCD] 
 
             - No additional text, spaces, or lines before or after.
             - Letter must be one of A, B, C, or D.
@@ -30,7 +30,7 @@ Output Format Requirements:
 
     Mathematical Notation:
 
-        Use LaTeX formatting for all mathematical expressions, symbols, variables, equations, and formulas within both the ## Solution (if applicable) and ## Reasoning sections.
+        Use LaTeX formatting for all mathematical expressions, symbols, variables, equations, and formulas within both the ## Reasoning section.
 
         Enclose inline LaTeX math within single dollar signs ($ ... $). Example: Let $x$ be the speed... or The result is $\frac{\pi}{2}$.
 
