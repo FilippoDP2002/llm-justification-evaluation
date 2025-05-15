@@ -43,7 +43,7 @@ while IFS= read -r model; do
     # Run your generator script
     python scripts/math_answer_generator.py \
         --model "$model" \
-        --reset-output
+        --range 0:4
 
     # Remove the model to free up space
     ollama rm "$model"
