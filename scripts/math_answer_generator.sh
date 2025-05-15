@@ -5,8 +5,7 @@
 #SBATCH --partition=dsba
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --gres=gpu:2
-#SBATCH --time=04:00:00
+#SBATCH --gres=gpu:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=3321908@studbocconi.it
 
