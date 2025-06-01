@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=verbal_answer_generation
-#SBATCH --output=logs/verbal_answer_%j.out
-#SBATCH --error=logs/verbal_answer_%j.err
+#SBATCH --job-name=proofs_answer_generation
+#SBATCH --output=logs/proofs_answer_%j.out
+#SBATCH --error=logs/proofs_answer_%j.err
 #SBATCH --partition=dsba
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
@@ -40,15 +40,15 @@ while IFS= read -r model; do
     ollama pull "$model"
 
     # Run your generator script
-    python scripts/verbal_answer_generator_1.py \
+    python scripts/proofs_answer_generator.py \
         --model "$model" \
-        --range 0:331
+        --range 0:4
 
     # Remove the model to free up space
     ollama rm "$model"
 
     echo "-----------------------------"
-done < models1.txt
+done < models.txt
 
 # Clean up
 conda deactivate
