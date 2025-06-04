@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=proofs_answer_generation
-#SBATCH --output=logs/proofs_answer_%j.out
-#SBATCH --error=logs/proofs_answer_%j.err
+#SBATCH --job-name=reading_comprehension_answer_generation
+#SBATCH --output=logs/read_answer_%j.out
+#SBATCH --error=logs/read_answer_%j.err
 #SBATCH --partition=dsba
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=3321908@studbocconi.it
 
@@ -40,16 +40,15 @@ while IFS= read -r model; do
     ollama pull "$model"
 
     # Run your generator script
-    python scripts/proofs_answer_generator.py \
+    python scripts/reading_comprehension_answer_generator.py \
         --model "$model" \
-        --range 0:499
+        --range 0:1
 
     # Remove the model to free up space
     ollama rm "$model"
 
     echo "-----------------------------"
-done < models1.txt
+done < models.txt
 
 # Clean up
 conda deactivate
-
