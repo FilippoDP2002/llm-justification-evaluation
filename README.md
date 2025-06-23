@@ -59,7 +59,7 @@ This repository uses **Git Large File Storage (LFS)** to handle large data files
 
 2.  **Clone the repository:**
     ```bash
-    git clone git@github.com:edopica/llm-justification-evaluation.git
+    git clone git@github.com:FilippoDP2002/llm-justification-evaluation.git
     cd llm-justification-evaluation
     ```
 
