@@ -1,7 +1,7 @@
 # Project: Qualitative Analysis and Comparative Evaluation Methods for LLM-Generated Texts
 
 **Course:** Natural Language Processing - [Bocconi University / Data Science]
-**Author(s):** Edoardo Picazio, Filippo Dario Paolucci, Luca D'ambrosio, Lorenzo Cavallera
+**Author(s):** Filippo Dario Paolucci, Luca D'ambrosio, Edoardo Picazio
 **Date:** April 2025
 
 ---
